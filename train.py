@@ -6,12 +6,17 @@ __author__ = 'David Ao'
 __mtime__ = '2017/7/19'
 # 
 """
+# from tensorflow.contrib import learn
+# path = r'F:\18MachineLearn\comment_classify\vocab'
+# vocab_processor = learn.preprocessing.VocabularyProcessor.restore(path)
+import csv
 import os
 import time
 
 import tensorflow as tf
 import numpy as np
 from tensorflow.contrib import learn
+from tensorflow.contrib.tensorboard.plugins import projector
 
 from cnn_model import TextCNN
 import data_process
@@ -29,7 +34,6 @@ class CnnTrainer:
     def __init__(self, model_code=0):
         self.load_config()
         self.model_code = model_code
-
 
     def load_config(self):
         """
@@ -99,13 +103,19 @@ class CnnTrainer:
         self.vocab_processor = learn.preprocessing.VocabularyProcessor(max_document_length)
         x = np.array(list(self.vocab_processor.fit_transform(x_text)))
         self.vocab_processor.save('vocab')
-
+        words = self.vocab_processor.vocabulary_._reverse_mapping
+        with open("metadata.tsv", 'w', newline='') as t:
+            temp = csv.writer(t, delimiter="\t")
+            for idx, w in enumerate(words):
+                row = [w, idx]
+                temp.writerow(row)
         return x
 
     def split_data(self, x, y):
         """
         分割数据
-        :param data:
+        :param y:
+        :param x:
         :return:
         """
         np.random.seed(10)
@@ -231,6 +241,8 @@ class CnnTrainer:
                 train_summary_op, train_summary_writer, test_summary_op, test_summary_writer, valid_summary_op, \
                 valid_summary_writer = self.save_summary(grads_and_vars=grads_and_vars)
 
+                tf.summary.merge_all()
+
                 if not os.path.exists(self.checkpoint_dir):
                     os.makedirs(self.checkpoint_dir)
                 checkpoint_prefix = os.path.join(self.checkpoint_dir, "model")
@@ -248,6 +260,15 @@ class CnnTrainer:
 
                         path = saver.save(self.sess, checkpoint_prefix, global_step=current_step)
                         print("Saved model checkpoint to {}\n".format(path))
+
+                        config = projector.ProjectorConfig()
+                        embedding = config.embeddings.add()
+                        embedding.tensor_name = self.cnn.embedding_W.name
+                        # 将元数据路径指定为刚才保存的文件
+                        embedding.metadata_path = os.path.join(self.out_dir, 'metadata.tsv')
+                        summary_writer = tf.summary.FileWriter(self.out_dir)
+                        # 保存embedding
+                        projector.visualize_embeddings(summary_writer, config)
 
                 train_summary_writer.close()
                 test_summary_writer.close()
